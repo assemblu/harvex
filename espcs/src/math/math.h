@@ -15,8 +15,6 @@ struct view_matrix_t
 
 struct Vector3
 {
-    float x, y, z;
-
     constexpr Vector3(
         const float x = 0.f,
         const float y = 0.f,
@@ -51,17 +49,22 @@ struct Vector3
         float _w = matrix[3][0] * x + matrix[3][1] * y + matrix[3][2] * z + matrix[3][3];
 
         if (_w < 0.01f)
-            return Vector3{ 0, 0, 0 };
+            return false;
 
         float invw = 1.0f / _w;
         _x *= invw;
         _y *= invw;
 
-        float screen_x = (screen_width / 2.0f * _x) + (_x + screen_width / 2.0f);
-        float screen_y = (-screen_height / 2.0f * _y) + (_y + screen_height / 2.0f);
+        float x = screen_width * 0.5f;
+        float y = screen_height * 0.5f;
 
-        return Vector3{ screen_x, screen_y, z };
+        x += 0.5f * _x * screen_width + 0.5f;
+        y -= 0.5f * _y * screen_height + 0.5f;
+
+        return Vector3{ x, y, _w};
     }
+
+    float x, y, z;
 };
 
 struct Vector2

@@ -20,7 +20,7 @@ extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
-	if (ImGui_ImplWin32_WndProcHandler)
+	if (ImGui_ImplWin32_WndProcHandler(hWnd, uMsg, wParam, lParam))
 	{
 		return 0L;
 	}
@@ -41,11 +41,11 @@ INT APIENTRY WinMain(HINSTANCE instance, HINSTANCE, PSTR, INT cmd_show)
 	wc.style = CS_HREDRAW | CS_VREDRAW;
 	wc.lpfnWndProc = WndProc;
 	wc.hInstance = instance;
-	wc.lpszClassName = L"External Overlay Class";
+	wc.lpszClassName = L"Assemblu Overlay Class";
 
 	RegisterClass(&wc);
 
-	const HWND window = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TRANSPARENT | WS_EX_LAYERED, wc.lpszClassName, L"External Overlay", WS_POPUP, 0, 0, 1920, 1080, nullptr, nullptr, wc.hInstance, nullptr);
+	const HWND window = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TRANSPARENT | WS_EX_LAYERED, wc.lpszClassName, L"Assemblu", WS_POPUP, 0, 0, 1920, 1080, nullptr, nullptr, wc.hInstance, nullptr);
 	
 	SetLayeredWindowAttributes(window, RGB(0, 0, 0), BYTE(255), LWA_ALPHA);
 	{
@@ -53,7 +53,7 @@ INT APIENTRY WinMain(HINSTANCE instance, HINSTANCE, PSTR, INT cmd_show)
 		GetClientRect(window, &client_area);
 		RECT window_area{};
 		GetWindowRect(window, &window_area);
-		RECT diff{};
+		POINT diff{};
 		ClientToScreen(window, &diff);
 
 		const MARGINS margins{
@@ -135,13 +135,18 @@ INT APIENTRY WinMain(HINSTANCE instance, HINSTANCE, PSTR, INT cmd_show)
 		return 1;
 	}
 
+	const std::uintptr_t client = mem::GetModuleBaseAddress(pid, L"client.dll");
+	if (client == 0)
+	{
+		MessageBox(NULL, L"Failed to get client base", L"Assemblu", MB_OK);
+		return 1;
+	}
 	MessageBox(NULL, L"Injected!", L"...", MB_OK);
 
 
 
 
 	bool running = true;
-
 	while (running)
 	{
 		MSG msg;
@@ -163,20 +168,18 @@ INT APIENTRY WinMain(HINSTANCE instance, HINSTANCE, PSTR, INT cmd_show)
 			break;
 		}
 
-		const auto local_player_pawn = mem::Read<std::uintptr_t>(client + offsets::dwLocalPlyerPawn);
-		if (!local_player_pawn)
-			MessageBox(NULL, L"local player not found", L"...", MB_OK);
+		//const auto local_player_pawn = mem::Read<std::uintptr_t>(client + offsets::dwLocalPlyerPawn);
+		//if (!local_player_pawn)
+		//	MessageBox(NULL, L"local player not found", L"...", MB_OK);
 
-		const auto entity_list = mem::Read(<std::uintptr_t>(clinet + offsets::dwEntityList);
-		if (!entity_list)
-			MessageBox(NULL, L"Entity list not found", L"...", MB_OK);
+		//const auto entity_list = mem::Read(<std::uintptr_t>(clinet + offsets::dwEntityList);
+		//if (!entity_list)
+		//	MessageBox(NULL, L"Entity list not found", L"...", MB_OK);
 
-		view_matrix_t view_matrix = mem::Read<view_matrix_t>(client + offsets::dwViewMatrix);
-		int local_team = mem::Read<view_matrix_t>(client + offsets::dwLocalTime);
+		//view_matrix_t view_matrix = mem::Read<view_matrix_t>(client + offsets::dwViewMatrix);
+		//int local_team = mem::Read<view_matrix_t>(client + offsets::dwLocalTime);
 
 
-
-			
 
 
 		ImGui_ImplDX11_NewFrame();
@@ -192,6 +195,7 @@ INT APIENTRY WinMain(HINSTANCE instance, HINSTANCE, PSTR, INT cmd_show)
 		ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
 		swap_chain->Present(1U, 0U);
 	}
+
 	ImGui_ImplDX11_Shutdown();
 	ImGui_ImplWin32_Shutdown();
 
