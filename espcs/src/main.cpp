@@ -16,6 +16,19 @@
 #include <imgui_impl_dx11.h>
 #include <imgui_impl_win32.h>
 
+typedef struct
+{
+	ImU32 R;
+	ImU32 G;
+	ImU32 B;
+	ImU32 A;
+} RGB;
+
+namespace render
+{
+	// ... draw things
+}
+
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
