@@ -184,9 +184,16 @@ INT APIENTRY WinMain(HINSTANCE instance, HINSTANCE, PSTR, INT cmd_show)
 		MessageBox(NULL, L"Failed to get client base", L"Assemblu", MB_OK);
 		return 1;
 	}
-	MessageBox(NULL, L"Injected!", L"...", MB_OK);
 
-
+	if (mem::Attach(L"cs2.exe")) 
+	{
+		MessageBox(NULL, L"Injected!", L"...", MB_OK);
+	}
+	else
+	{
+		MessageBox(NULL, L"Failed to inject", L"...", MB_OK);
+		return 1;
+	}
 
 
 	bool running = true;
@@ -222,7 +229,7 @@ INT APIENTRY WinMain(HINSTANCE instance, HINSTANCE, PSTR, INT cmd_show)
 		
 		const auto entity_list = mem::Read<std::uintptr_t>(client + offsets::dwEntityList);
 		if (!entity_list)
-			MessageBox(NULL, L"Failed to get local player pawn", L"...", MB_OK);
+			MessageBox(NULL, L"Failed to get entity list", L"...", MB_OK);
 
 		view_matrix_t view_matrix = mem::Read<view_matrix_t>(client + offsets::dwViewMatrix);
 		int local_team = mem::Read<int>(client + offsets::m_iTeamNum);
@@ -257,11 +264,9 @@ INT APIENTRY WinMain(HINSTANCE instance, HINSTANCE, PSTR, INT cmd_show)
 			Vector3 head = { origin.x, origin.y, origin.z + 75.f };
 
 			Vector3 local_origin = mem::Read<Vector3>(local_player_pawn + offsets::m_vOldOrigin);
-			Vector3 headl = head;
-			headl.z = head.z + 10.f;
 
 			Vector3 screen_feet_pos = origin.WorldToScreen(view_matrix);
-			Vector3 screen_head_pos = headl.WorldToScreen(view_matrix);
+			Vector3 screen_head_pos = head.WorldToScreen(view_matrix);
 
 			float head_height = (screen_feet_pos.y - screen_head_pos.y) / 8;
 			float height = screen_feet_pos.y - screen_head_pos.y;
