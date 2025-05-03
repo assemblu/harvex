@@ -24,6 +24,17 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 	{
 		return 0L;
 	}
+
+	switch (uMsg)
+	{
+	case WM_KEYDOWN:
+		switch (wParam)
+		{
+		case VK_INSERT:
+			// show menu
+			break;
+		}
+	}
 	
 	if (uMsg == WM_DESTROY)
 	{
@@ -170,6 +181,59 @@ INT APIENTRY WinMain(HINSTANCE instance, HINSTANCE, PSTR, INT cmd_show)
 
 
 		const auto local_player_pawn = mem::Read<std::uintptr_t>(client + offsets::dwLocalPlayerPawn);
+		if (!local_player_pawn)
+			MessageBox(NULL, L"Failed to get local player pawn", L"...", MB_OK);
+		
+		const auto entity_list = mem::Read<std::uintptr_t>(client + offsets::dwEntityList);
+		if (!entity_list)
+			MessageBox(NULL, L"Failed to get local player pawn", L"...", MB_OK);
+
+		view_matrix_t view_matrix = mem::Read<view_matrix_t>(client + offsets::dwViewMatrix);
+		int local_team = mem::Read<int>(client + offsets::m_iTeamNum);
+
+		for (int i = 0; i < 64; i++)
+		{
+			uintptr_t list_entry = mem::Read<uintptr_t>(entity_list + (8 * (i & 0x7FFF) >> 9) + 16);
+			if (!list_entry)
+				continue;
+
+			const auto entity_controller = mem::Read<uintptr_t>(list_entry + 120 * (i & 0x1FF));
+			if (!entity_controller)
+				continue;
+
+			const auto entity_controller_pawn = mem::Read<uintptr_t>(entity_controller + offsets::m_hPawn);
+			if (!entity_controller_pawn)
+				continue;
+			
+			const auto entity_pawn = mem::Read<uintptr_t>(list_entry + 120 * (entity_controller_pawn & 0x1FF));
+			if (!entity_pawn)
+				continue;
+
+			const auto entity_team = mem::Read<int>(entity_pawn + offsets::m_iTeamNum);
+			if (entity_team == local_team)
+				continue;
+
+			int health = mem::Read<int>(entity_pawn + offsets::m_iHealth);
+			if (health <= 0 || health > 100)
+				continue;
+
+			Vector3 origin = mem::Read<Vector3>(local_player_pawn + offsets::m_vOldOrigin);
+			Vector3 head = { origin.x, origin.y, origin.z + 75.f };
+
+			Vector3 local_origin = mem::Read<Vector3>(local_player_pawn + offsets::m_vOldOrigin);
+			Vector3 headl = headl;
+			headl.z = head.z + 10.f;
+
+			Vector3 screen_feet_pos = origin.WorldToScreen(view_matrix);
+			Vector3 screen_head_pos = headl.WorldToScreen(view_matrix);
+
+			float head_height = (screen_feet_pos.y - screen_head_pos.y) / 8;
+			float height = screen_feet_pos.y - screen_head_pos.y;
+			float width = height / 2.4f;
+
+
+		}
+
 
 
 
