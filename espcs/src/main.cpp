@@ -168,17 +168,8 @@ INT APIENTRY WinMain(HINSTANCE instance, HINSTANCE, PSTR, INT cmd_show)
 			break;
 		}
 
-		//const auto local_player_pawn = mem::Read<std::uintptr_t>(client + offsets::dwLocalPlyerPawn);
-		//if (!local_player_pawn)
-		//	MessageBox(NULL, L"local player not found", L"...", MB_OK);
 
-		//const auto entity_list = mem::Read(<std::uintptr_t>(clinet + offsets::dwEntityList);
-		//if (!entity_list)
-		//	MessageBox(NULL, L"Entity list not found", L"...", MB_OK);
-
-		//view_matrix_t view_matrix = mem::Read<view_matrix_t>(client + offsets::dwViewMatrix);
-		//int local_team = mem::Read<view_matrix_t>(client + offsets::dwLocalTime);
-
+		const auto local_player_pawn = mem::Read<std::uintptr_t>(client + offsets::dwLocalPlayerPawn);
 
 
 

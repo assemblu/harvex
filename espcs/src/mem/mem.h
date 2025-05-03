@@ -4,9 +4,13 @@
 #include <TlHelp32.h>
 #include <string>
 #include <vector>
+#include <stdexcept>
 
 namespace mem
 {
+    HANDLE hproc = nullptr;
+    DWORD proc_id = 0;
+
     DWORD GetProcId(const wchar_t* procName)
     {
         DWORD procId = 0;
@@ -31,6 +35,35 @@ namespace mem
         }
         CloseHandle(hSnap);
         return procId;
+    }
+
+    bool Attach(const wchar_t* proc_name, DWORD access_rights = PROCESS_ALL_ACCESS)
+    {
+        proc_id = GetProcId(proc_name);
+        if (proc_id == 0)
+            return false;
+        hproc = OpenProcess(access_rights, FALSE, proc_id);
+        if (hproc == nullptr || hproc == INVALID_HANDLE_VALUE)
+        {
+            hproc = nullptr;
+            proc_id = 0;
+            return false;
+        }
+
+        return true;
+    }
+
+    void Detach()
+    {
+        if (hproc != nullptr)
+        {
+            if (hproc != nullptr)
+            {
+                CloseHandle(hproc);
+                hproc = nullptr;
+                proc_id = 0;
+            }
+        }
     }
 
     uintptr_t GetModuleBaseAddress(DWORD procId, const wchar_t* modName)
@@ -60,54 +93,68 @@ namespace mem
     }
 
     template<typename T>
-    T Read(HANDLE hProcess, uintptr_t address)
+    T Read(uintptr_t address)
     {
         T value;
-        ReadProcessMemory(hProcess, (LPCVOID)address, &value, sizeof(T), nullptr);
+        if (!hproc || !ReadProcessMemory(hproc, (LPCVOID)address), sizeof(T), nullptr))
+        {
+            return T{};
+        }
+
         return value;
     }
 
     template<typename T>
-    bool Write(HANDLE hProcess, uintptr_t address, T value)
+    bool Write(uintptr_t address, T value)
     {
-        return WriteProcessMemory(hProcess, (LPVOID)address, &value, sizeof(T), nullptr);
+        if (!hproc) return false;
+        return WriteProcessMemory(hproc, (LPVOID)address, &value, sizeof(T), nullptr);
     }
 
-    std::string ReadString(HANDLE hProcess, uintptr_t address, size_t maxLength = 256)
+    std::string ReadString(uintptr_t address, size_t max_len = 256)
     {
-        std::vector<char> buffer(maxLength);
-        if (ReadProcessMemory(hProcess, (LPCVOID)address, buffer.data(), maxLength, nullptr))
+        std::vector<char> buffer(max_len);
+        if (!hproc || !ReadProcessMemory(hproc, (LPVOID)address, buffer.data(), max_len, nullptr))
         {
-            return std::string(buffer.data());
+            return "";
         }
-        return "";
+        buffer[max_len - 1] = '\0';
+        size_t len = strnlen(buffer.data(), max_len);
+        return std::string(buffer.data(), len);
     }
 
-    uintptr_t FindPattern(HANDLE hProcess, uintptr_t start, size_t size, const char* pattern, const char* mask)
+    uintptr_t FindPattern(uintptr_t start, size_t size, const char* pattern, const char* mask)
     {
         std::vector<BYTE> buffer(size);
         SIZE_T bytesRead;
 
-        if (ReadProcessMemory(hProcess, (LPCVOID)start, buffer.data(), size, &bytesRead))
-        {
-            for (size_t i = 0; i < bytesRead; i++)
-            {
-                bool found = true;
-                for (size_t j = 0; pattern[j]; j++)
-                {
-                    if (mask[j] == 'x' && buffer[i + j] != (BYTE)pattern[j])
-                    {
-                        found = false;
-                        break;
-                    }
-                }
 
-                if (found)
-                {
-                    return start + i;
-                }
-            }
+        if (!hproc || !ReadProcessMemory(hproc, (LPCVOID)start, buffer.data(), size, &bytesRead))
+        {
+            return 0;
         }
+
+        size_t read_size = (bytesRead <= size) ? bytesRead : size;
+        size_t pattern_len = strlen(mask);
+
+		for (size_t i = 0; (i + pattern_len) <= read_size; i++)
+		{
+			bool found = true;
+            for (size_t j  = 0; j < pattern_len; j++)
+			{
+                if (mask[j] != '?' && mask[j] != 'x') continue;
+				if (mask[j] == 'x' && buffer[i + j] != static_cast<BYTE>(pattern[j]))
+				{
+					found = false;
+					break;
+				}
+			}
+
+			if (found)
+			{
+				return start + i;
+			}
+		}
 
         return 0;
     }
