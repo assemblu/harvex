@@ -1,7 +1,14 @@
 #pragma once
 
+// #define LOWRES
+
+#if LOWRES
 inline int screen_width = 1920;
 inline int screen_height = 1080;
+#else
+inline int screen_width = 3840; // Changed from 1920
+inline int screen_height = 2160; // Changed from 1080
+#endif
 
 struct view_matrix_t
 {
