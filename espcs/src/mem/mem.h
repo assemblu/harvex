@@ -96,7 +96,7 @@ namespace mem
     T Read(uintptr_t address)
     {
         T value;
-        if (!hproc || !ReadProcessMemory(hproc, (LPCVOID)address), sizeof(T), nullptr))
+        if (!hproc || !ReadProcessMemory(hproc, (LPCVOID)address, &value, sizeof(T), nullptr))
         {
             return T{};
         }

@@ -9,4 +9,5 @@ namespace offsets {
 	constexpr std::ptrdiff_t m_iHealth = 0x344;
 	constexpr std::ptrdiff_t m_iTeamNum = 0x3E3;
 	constexpr std::ptrdiff_t m_hPawn = 0x62C;
+	constexpr std::ptrdiff_t m_vOldOrigin = 0x1324;
 }

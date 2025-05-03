@@ -44,9 +44,10 @@ struct Vector3
 
     Vector3 WorldToScreen(const view_matrix_t& matrix) const
     {
-        float _x = matrix[0][0] * x + matrix[0][1] * y + matrix[0][2] * z + matrix[0][3];
-        float _y = matrix[1][0] * x + matrix[1][1] * y + matrix[1][2] * z + matrix[1][3];
-        float _w = matrix[3][0] * x + matrix[3][1] * y + matrix[3][2] * z + matrix[3][3];
+        
+        float _x = matrix.matrix[0][0] * x + matrix.matrix[0][1] * y + matrix.matrix[0][2] * z + matrix.matrix[0][3];
+        float _y = matrix.matrix[1][0] * x + matrix.matrix[1][1] * y + matrix.matrix[1][2] * z + matrix.matrix[1][3];
+        float _w = matrix.matrix[3][0] * x + matrix.matrix[3][1] * y + matrix.matrix[3][2] * z + matrix.matrix[3][3];
 
         if (_w < 0.01f)
             return false;

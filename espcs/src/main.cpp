@@ -24,9 +24,28 @@ typedef struct
 	ImU32 A;
 } RGB;
 
+ImU32 Color(RGB color)
+{
+	return IM_COL32(color.R, color.G, color.B, color.A);
+}
+
+RGB red = { 255, 0, 0, 255 };
+
+
 namespace render
 {
 	// ... draw things
+
+	void DrawRect(int x, int y, int w, int h, RGB color, int thickness)
+	{
+		ImGui::GetBackgroundDrawList()->AddRect(ImVec2(x, y), ImVec2(x + w, y + h), Color(color), 0.f, 0, thickness);
+	}
+
+	void Line(int x1, int y1, int x2, int y2, RGB color, int thickness)
+	{
+		ImGui::GetBackgroundDrawList()->AddLine(ImVec2(x1, y1), ImVec2(x2, y2), Color(color), thickness);
+	}
+
 }
 
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -67,7 +86,7 @@ INT APIENTRY WinMain(HINSTANCE instance, HINSTANCE, PSTR, INT cmd_show)
 	wc.hInstance = instance;
 	wc.lpszClassName = L"Assemblu Overlay Class";
 
-	RegisterClass(&wc);
+	RegisterClassExW(&wc);
 
 	const HWND window = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TRANSPARENT | WS_EX_LAYERED, wc.lpszClassName, L"Assemblu", WS_POPUP, 0, 0, 1920, 1080, nullptr, nullptr, wc.hInstance, nullptr);
 	
@@ -192,6 +211,10 @@ INT APIENTRY WinMain(HINSTANCE instance, HINSTANCE, PSTR, INT cmd_show)
 			break;
 		}
 
+		ImGui_ImplDX11_NewFrame();
+		ImGui_ImplWin32_NewFrame();
+		ImGui::NewFrame();
+
 
 		const auto local_player_pawn = mem::Read<std::uintptr_t>(client + offsets::dwLocalPlayerPawn);
 		if (!local_player_pawn)
@@ -234,7 +257,7 @@ INT APIENTRY WinMain(HINSTANCE instance, HINSTANCE, PSTR, INT cmd_show)
 			Vector3 head = { origin.x, origin.y, origin.z + 75.f };
 
 			Vector3 local_origin = mem::Read<Vector3>(local_player_pawn + offsets::m_vOldOrigin);
-			Vector3 headl = headl;
+			Vector3 headl = head;
 			headl.z = head.z + 10.f;
 
 			Vector3 screen_feet_pos = origin.WorldToScreen(view_matrix);
@@ -244,15 +267,16 @@ INT APIENTRY WinMain(HINSTANCE instance, HINSTANCE, PSTR, INT cmd_show)
 			float height = screen_feet_pos.y - screen_head_pos.y;
 			float width = height / 2.4f;
 
-
+			render::DrawRect(
+				screen_head_pos.x - width / 2,
+				screen_head_pos.y,
+				width,
+				height,
+				red,
+				1.5f
+			);
 		}
 
-
-
-
-		ImGui_ImplDX11_NewFrame();
-		ImGui_ImplWin32_NewFrame();
-		ImGui::NewFrame();
 
 		ImGui::Render();
 
