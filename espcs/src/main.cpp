@@ -269,7 +269,7 @@ INT APIENTRY WinMain(HINSTANCE instance, HINSTANCE, PSTR, INT cmd_show)
 			if (entity_origin.x == 0.f && entity_origin.y == 0.f && entity_origin.z == 0.f)
 				continue;
 
-			Vector3 entity_head = { entity_origin.x, entity_origin.y, entity_origin.z + 75.f };
+			Vector3 entity_head = { entity_origin.x, entity_origin.y + 50.f, entity_origin.z + 60.f };
 			
 			/*
 			Vector3 screen_feet_pos = origin.WorldToScreen(view_matrix);
