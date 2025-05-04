@@ -265,12 +265,25 @@ INT APIENTRY WinMain(HINSTANCE instance, HINSTANCE, PSTR, INT cmd_show)
 
 			Vector3 local_origin = mem::Read<Vector3>(local_player_pawn + offsets::m_vOldOrigin);
 
+			Vector3 entity_origin = mem::Read<Vector3>(entity_pawn + offsets::m_vOldOrigin);
+			if (entity_origin.x == 0.f && entity_origin.y == 0.f && entity_origin.z == 0.f)
+				continue;
+
+			Vector3 entity_head = { entity_origin.x, entity_origin.y, entity_origin.z + 75.f };
+			
+			/*
 			Vector3 screen_feet_pos = origin.WorldToScreen(view_matrix);
 			Vector3 screen_head_pos = head.WorldToScreen(view_matrix);
+			*/
+			Vector3 screen_feet_pos = entity_origin.WorldToScreen(view_matrix);
+			Vector3 screen_head_pos = entity_head.WorldToScreen(view_matrix);
 
-			float head_height = (screen_feet_pos.y - screen_head_pos.y) / 8;
+			//float head_height = (screen_feet_pos.y - screen_head_pos.y) / 8;
 			float height = screen_feet_pos.y - screen_head_pos.y;
 			float width = height / 2.4f;
+
+			if (height <= 1.f || width <= 1.f)
+				continue;
 
 			render::DrawRect(
 				screen_head_pos.x - width / 2,
