@@ -1,339 +1,342 @@
-#include <Windows.h>
-#include <TlHelp32.h>
 #include <iostream>
-#include <cmath>
-#include <numbers>
 #include <thread>
-#include <d3d11.h>
-#include <tchar.h>
-#include <dwmapi.h>
+#include <chrono>
+#include <atomic>
+#include <memory>
+#include <string>
 
-#include <math/math.h>
-#include <mem/mem.h>
-#include <offsets/offsets.h>
+// Windows includes
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
+#include <iomanip>
+#include <io.h>
+#include <fcntl.h>
 
-#include <imgui.h>
-#include <imgui_impl_dx11.h>
-#include <imgui_impl_win32.h>
+// Include our NT API memory system
+#include "Core/Memory.hpp"
 
-typedef struct
-{
-	ImU32 R;
-	ImU32 G;
-	ImU32 B;
-	ImU32 A;
-} RGB;
+// Forward declarations
+class CheatFramework;
 
-ImU32 Color(RGB color)
-{
-	return IM_COL32(color.R, color.G, color.B, color.A);
+// Global state
+std::atomic<bool> g_running{true};
+std::unique_ptr<CheatFramework> g_framework;
+
+// Console management
+bool g_console_allocated = false;
+
+// Console control handler
+BOOL WINAPI ConsoleHandler(DWORD dwType) {
+    switch (dwType) {
+    case CTRL_C_EVENT:
+    case CTRL_BREAK_EVENT:
+    case CTRL_CLOSE_EVENT:
+        std::wcout << L"\n[Framework] Shutting down..." << std::endl;
+        g_running = false;
+        return TRUE;
+    }
+    return FALSE;
 }
 
-RGB red = { 255, 0, 0, 255 };
-
-
-namespace render
-{
-	// ... draw things
-
-	void DrawRect(int x, int y, int w, int h, RGB color, int thickness)
-	{
-		ImGui::GetBackgroundDrawList()->AddRect(ImVec2(x, y), ImVec2(x + w, y + h), Color(color), 0.f, 0, thickness);
-	}
-
-	void Line(int x1, int y1, int x2, int y2, RGB color, int thickness)
-	{
-		ImGui::GetBackgroundDrawList()->AddLine(ImVec2(x1, y1), ImVec2(x2, y2), Color(color), thickness);
-	}
-
+// Create console for debugging
+void CreateDebugConsole() {
+    if (g_console_allocated) return;
+    
+    // Allocate a console for this GUI application
+    if (AllocConsole()) {
+        g_console_allocated = true;
+        
+        // Redirect stdout, stdin, stderr to console
+        FILE* pCout;
+        FILE* pCin;
+        FILE* pCerr;
+        
+        freopen_s(&pCout, "CONOUT$", "w", stdout);
+        freopen_s(&pCin, "CONIN$", "r", stdin);
+        freopen_s(&pCerr, "CONOUT$", "w", stderr);
+        
+        // Make cout, wcout, cin, wcin, wcerr, cerr, wclog and clog
+        // point to console as well
+        std::ios::sync_with_stdio(true);
+        
+        // Set console title
+        SetConsoleTitleW(L"CS2 External Cheat - Debug Console");
+        
+        // Set console control handler
+        SetConsoleCtrlHandler(ConsoleHandler, TRUE);
+        
+        std::cout << "[Debug] Console allocated successfully" << std::endl;
+    } else {
+        MessageBoxW(NULL, L"Failed to allocate console", L"Error", MB_OK | MB_ICONERROR);
+    }
 }
 
-extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
-
-LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
-{
-	if (ImGui_ImplWin32_WndProcHandler(hWnd, uMsg, wParam, lParam))
-	{
-		return 0L;
-	}
-
-	switch (uMsg)
-	{
-	case WM_KEYDOWN:
-		switch (wParam)
-		{
-		case VK_INSERT:
-			// show menu
-			break;
-		}
-	}
-	
-	if (uMsg == WM_DESTROY)
-	{
-		PostQuitMessage(0);
-		return 0L;
-	}
-
-	return DefWindowProc(hWnd, uMsg, wParam, lParam);
+// Cleanup console
+void DestroyDebugConsole() {
+    if (g_console_allocated) {
+        std::cout << "[Debug] Cleaning up console..." << std::endl;
+        FreeConsole();
+        g_console_allocated = false;
+    }
 }
 
-INT APIENTRY WinMain(HINSTANCE instance, HINSTANCE, PSTR, INT cmd_show)
-{
-	WNDCLASSEXW wc = {};
-	wc.cbSize = sizeof(WNDCLASSEX);
-	wc.style = CS_HREDRAW | CS_VREDRAW;
-	wc.lpfnWndProc = WndProc;
-	wc.hInstance = instance;
-	wc.lpszClassName = L"Assemblu Overlay Class";
+class CheatFramework {
+private:
+    std::atomic<bool> m_initialized{false};
+    std::string m_target_process;
+    std::unique_ptr<MemoryManager> m_memory;
+    
+    // Game module information
+    ModuleInfo m_client_dll;
+    ModuleInfo m_engine_dll;
+    
+public:
+    explicit CheatFramework(const std::string& target_process) 
+        : m_target_process(target_process) {
+        m_memory = std::make_unique<MemoryManager>();
+    }
+    
+    ~CheatFramework() {
+        Shutdown();
+    }
+    
+    bool Initialize() {
+        std::cout << "[Framework] Initializing cheat framework..." << std::endl;
+        std::cout << "[Framework] Target process: " << m_target_process << std::endl;
+        
+        // Try to attach to the process using NT API
+        if (!m_memory->AttachToProcess(m_target_process)) {
+            std::cout << "[Framework] Failed to attach to process. Make sure " << m_target_process << " is running." << std::endl;
+            std::cout << "[Framework] Try running as administrator if the process is protected." << std::endl;
+            return false;
+        }
+        
+        // Get game modules
+        if (!LoadGameModules()) {
+            std::cout << "[Framework] Failed to load game modules" << std::endl;
+            return false;
+        }
+        
+        // Test memory operations
+        TestMemoryOperations();
+        
+        m_initialized = true;
+        std::cout << "[Framework] Framework initialized successfully!" << std::endl;
+        return true;
+    }
+    
+    void Run() {
+        if (!m_initialized) {
+            std::cerr << "[Framework] Framework not initialized!" << std::endl;
+            return;
+        }
+        
+        std::cout << "[Framework] Starting main loop..." << std::endl;
+        std::cout << "[Framework] Press INSERT to toggle console, END to exit" << std::endl;
+        
+        while (g_running && m_initialized) {
+            Update();
+            Render();
+            ProcessInput();
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        
+        std::cout << "[Framework] Main loop ended" << std::endl;
+    }
+    
+    void Shutdown() {
+        if (!m_initialized) return;
+        
+        std::cout << "[Framework] Shutting down framework..." << std::endl;
+        m_initialized = false;
+        
+        if (m_memory) {
+            m_memory->Detach();
+        }
+        
+        std::cout << "[Framework] Framework shutdown complete" << std::endl;
+    }
+    
+private:
+    bool LoadGameModules() {
+        std::cout << "[Framework] Loading game modules..." << std::endl;
+        
+        // Get client.dll
+        m_client_dll = m_memory->GetModule("client.dll");
+        if (!m_client_dll.IsValid()) {
+            std::cout << "[Framework] Failed to find client.dll - make sure CS2 is running" << std::endl;
+            return false;
+        }
+        
+        // Get engine2.dll
+        m_engine_dll = m_memory->GetModule("engine2.dll");
+        if (!m_engine_dll.IsValid()) {
+            std::cout << "[Framework] Failed to find engine2.dll" << std::endl;
+            return false;
+        }
+        
+        std::cout << "[Framework] Game modules loaded successfully!" << std::endl;
+        return true;
+    }
+    
+    void TestMemoryOperations() {
+        std::cout << "[Framework] Testing NT API memory operations..." << std::endl;
+        
+        // Test reading from client.dll
+        if (m_client_dll.IsValid()) {
+            // Read DOS header
+            uint16_t dos_signature = m_memory->Read<uint16_t>(m_client_dll.base_address);
+            std::cout << "[Memory] client.dll DOS signature: 0x" << std::hex << dos_signature << std::dec;
+            
+            if (dos_signature == 0x5A4D) { // "MZ"
+                std::cout << " (Valid PE file)" << std::endl;
+                
+                // Read more data to verify NT API is working
+                uint32_t first_dword = m_memory->Read<uint32_t>(m_client_dll.base_address);
+                std::cout << "[Memory] First DWORD of client.dll: 0x" << std::hex << first_dword << std::dec << std::endl;
+                
+                // Test reading a larger chunk
+                uint8_t buffer[16];
+                if (m_memory->ReadRaw(m_client_dll.base_address, buffer, sizeof(buffer))) {
+                    std::cout << "[Memory] First 16 bytes: ";
+                    for (int i = 0; i < 16; i++) {
+                        std::cout << std::hex << std::setfill('0') << std::setw(2) << static_cast<int>(buffer[i]) << " ";
+                    }
+                    std::cout << std::dec << std::endl;
+                } else {
+                    std::cout << "[Memory] Failed to read raw memory" << std::endl;
+                }
+            } else {
+                std::cout << " (Invalid PE file - something is wrong)" << std::endl;
+            }
+        }
+        
+        // Test reading from engine2.dll
+        if (m_engine_dll.IsValid()) {
+            uint16_t dos_signature = m_memory->Read<uint16_t>(m_engine_dll.base_address);
+            std::cout << "[Memory] engine2.dll DOS signature: 0x" << std::hex << dos_signature << std::dec;
+            std::cout << (dos_signature == 0x5A4D ? " (Valid)" : " (Invalid)") << std::endl;
+        }
+        
+        std::cout << "[Framework] Memory operations test complete!" << std::endl;
+    }
+    
+    void Update() {
+        // Check if process is still running
+        if (!m_memory->IsAttached()) {
+            std::cout << "[Framework] Lost connection to process" << std::endl;
+            g_running = false;
+            return;
+        }
+        
+        // TODO: Update game entities using NT API
+        // TODO: Read player data using NT API
+        // TODO: Update world-to-screen matrix using NT API
+    }
+    
+    void Render() {
+        // TODO: Render ESP elements
+        // This is where you'd implement your overlay rendering
+    }
+    
+    void ProcessInput() {
+        // Exit key
+        if (GetAsyncKeyState(VK_END) & 0x8000) {
+            g_running = false;
+        }
+        
+        // Toggle console visibility
+        static bool insert_pressed = false;
+        if (GetAsyncKeyState(VK_INSERT) & 0x8000) {
+            if (!insert_pressed) {
+                insert_pressed = true;
+                HWND console_window = GetConsoleWindow();
+                if (console_window) {
+                    bool is_visible = IsWindowVisible(console_window);
+                    ShowWindow(console_window, is_visible ? SW_HIDE : SW_SHOW);
+                    std::cout << "[Debug] Console " << (is_visible ? "hidden" : "shown") << std::endl;
+                }
+            }
+        } else {
+            insert_pressed = false;
+        }
+        
+        // Test key - read some memory when F1 is pressed
+        static bool f1_pressed = false;
+        if (GetAsyncKeyState(VK_F1) & 0x8000) {
+            if (!f1_pressed) {
+                f1_pressed = true;
+                std::cout << "[Framework] F1 pressed - performing NT API memory test..." << std::endl;
+                TestMemoryOperations();
+            }
+        } else {
+            f1_pressed = false;
+        }
+    }
+};
 
-	RegisterClassExW(&wc);
-
-	const HWND window = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TRANSPARENT | WS_EX_LAYERED, wc.lpszClassName, L"Assemblu", WS_POPUP, 0, 0, 1920, 1080, nullptr, nullptr, wc.hInstance, nullptr);
-	
-	SetLayeredWindowAttributes(window, RGB(0, 0, 0), BYTE(255), LWA_ALPHA);
-	{
-		RECT client_area{};
-		GetClientRect(window, &client_area);
-		RECT window_area{};
-		GetWindowRect(window, &window_area);
-		POINT diff{};
-		ClientToScreen(window, &diff);
-
-		const MARGINS margins{
-			window_area.left + (diff.x - window_area.left),
-			window_area.top + (diff.y - window_area.top),
-			client_area.right,
-			client_area.bottom
-		};
-
-		DwmExtendFrameIntoClientArea(window, &margins);
-	}
-
-	DXGI_SWAP_CHAIN_DESC sd{};
-	sd.BufferDesc.RefreshRate.Numerator = 60U;
-	sd.BufferDesc.RefreshRate.Denominator = 1U;
-	sd.BufferDesc.Format = DXGI_FORMAT_R8G8B8A8_UNORM;
-	sd.SampleDesc.Count = 1U;
-	sd.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT;
-	sd.BufferCount = 2U;
-	sd.OutputWindow = window;
-	sd.Windowed = TRUE;
-	sd.SwapEffect = DXGI_SWAP_EFFECT_DISCARD;
-	sd.Flags = DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH;
-
-	constexpr D3D_FEATURE_LEVEL levels[2]
-	{
-		D3D_FEATURE_LEVEL_11_0,
-		D3D_FEATURE_LEVEL_10_0
-	};
-
-	ID3D11Device* device = nullptr;
-	ID3D11DeviceContext* context = nullptr;
-	IDXGISwapChain* swap_chain = nullptr;
-	ID3D11RenderTargetView* render_target = nullptr;
-	D3D_FEATURE_LEVEL level{};
-
-	D3D11CreateDeviceAndSwapChain(
-		nullptr,
-		D3D_DRIVER_TYPE_HARDWARE,
-		nullptr,
-		0U,
-		levels,
-		2U,
-		D3D11_SDK_VERSION,
-		&sd,
-		&swap_chain,
-		&device,
-		&level,
-		&context
-	);
-
-	ID3D11Texture2D* back_buffer{ nullptr };
-	swap_chain->GetBuffer(0U, IID_PPV_ARGS(&back_buffer));
-
-	if (back_buffer)
-	{
-		device->CreateRenderTargetView(back_buffer, nullptr, &render_target);
-		back_buffer->Release();
-	}
-	else
-	{
-		return 1;
-	}
-
-	ShowWindow(window, cmd_show);
-	UpdateWindow(window);
-
-	ImGui::CreateContext();
-	ImGui::StyleColorsDark();
-
-	ImGui_ImplWin32_Init(window);
-	ImGui_ImplDX11_Init(device, context);
-
-
-	const DWORD pid = mem::GetProcId(L"cs2.exe");
-	if (pid == 0)
-	{
-		MessageBox(NULL, L"Failed to get PID", L"...", MB_OK);
-		return 1;
-	}
-
-	const std::uintptr_t client = mem::GetModuleBaseAddress(pid, L"client.dll");
-	if (client == 0)
-	{
-		MessageBox(NULL, L"Failed to get client base", L"Assemblu", MB_OK);
-		return 1;
-	}
-
-	if (mem::Attach(L"cs2.exe")) 
-	{
-		MessageBox(NULL, L"Injected!", L"...", MB_OK);
-	}
-	else
-	{
-		MessageBox(NULL, L"Failed to inject", L"...", MB_OK);
-		return 1;
-	}
-
-
-	bool running = true;
-	while (running)
-	{
-		MSG msg;
-		while (PeekMessage(&msg, nullptr, 0U, 0U, PM_REMOVE))
-		{
-			TranslateMessage(&msg);
-			DispatchMessage(&msg);
-
-			if (msg.message == WM_QUIT)
-			{
-				running = false;
-			}
-
-			ImGui_ImplWin32_WndProcHandler(window, msg.message, msg.wParam, msg.lParam);
-		}
-
-		if (!running)
-		{
-			break;
-		}
-
-		ImGui_ImplDX11_NewFrame();
-		ImGui_ImplWin32_NewFrame();
-		ImGui::NewFrame();
-
-
-		const auto local_player_pawn = mem::Read<std::uintptr_t>(client + offsets::dwLocalPlayerPawn);
-		if (!local_player_pawn)
-			MessageBox(NULL, L"Failed to get local player pawn", L"...", MB_OK);
-		
-		const auto entity_list = mem::Read<std::uintptr_t>(client + offsets::dwEntityList);
-		if (!entity_list)
-			MessageBox(NULL, L"Failed to get entity list", L"...", MB_OK);
-
-		view_matrix_t view_matrix = mem::Read<view_matrix_t>(client + offsets::dwViewMatrix);
-		int local_team = mem::Read<int>(client + offsets::m_iTeamNum);
-
-		for (int i = 0; i < 64; i++)
-		{
-			uintptr_t list_entry = mem::Read<uintptr_t>(entity_list + (8 * (i & 0x7FFF) >> 9) + 16);
-			if (!list_entry)
-				continue;
-
-			const auto entity_controller = mem::Read<uintptr_t>(list_entry + 120 * (i & 0x1FF));
-			if (!entity_controller)
-				continue;
-
-			const auto entity_controller_pawn = mem::Read<uintptr_t>(entity_controller + offsets::m_hPawn);
-			if (!entity_controller_pawn)
-				continue;
-			
-			const auto entity_pawn = mem::Read<uintptr_t>(list_entry + 120 * (entity_controller_pawn & 0x1FF));
-			if (!entity_pawn)
-				continue;
-
-			const auto entity_team = mem::Read<int>(entity_pawn + offsets::m_iTeamNum);
-			if (entity_team == local_team)
-				continue;
-
-			int health = mem::Read<int>(entity_pawn + offsets::m_iHealth);
-			if (health <= 0 || health > 100)
-				continue;
-
-			Vector3 origin = mem::Read<Vector3>(local_player_pawn + offsets::m_vOldOrigin);
-			Vector3 head = { origin.x, origin.y, origin.z + 75.f };
-
-			Vector3 local_origin = mem::Read<Vector3>(local_player_pawn + offsets::m_vOldOrigin);
-
-			Vector3 entity_origin = mem::Read<Vector3>(entity_pawn + offsets::m_vOldOrigin);
-			if (entity_origin.x == 0.f && entity_origin.y == 0.f && entity_origin.z == 0.f)
-				continue;
-
-			Vector3 entity_head = { entity_origin.x, entity_origin.y + 50.f, entity_origin.z + 60.f };
-			
-			/*
-			Vector3 screen_feet_pos = origin.WorldToScreen(view_matrix);
-			Vector3 screen_head_pos = head.WorldToScreen(view_matrix);
-			*/
-			Vector3 screen_feet_pos = entity_origin.WorldToScreen(view_matrix);
-			Vector3 screen_head_pos = entity_head.WorldToScreen(view_matrix);
-
-			//float head_height = (screen_feet_pos.y - screen_head_pos.y) / 8;
-			float height = screen_feet_pos.y - screen_head_pos.y;
-			float width = height / 2.4f;
-
-			if (height <= 1.f || width <= 1.f)
-				continue;
-
-			render::DrawRect(
-				screen_head_pos.x - width / 2,
-				screen_head_pos.y,
-				width,
-				height,
-				red,
-				1.5f
-			);
-		}
-
-
-		ImGui::Render();
-
-		constexpr float color[4]{ 0.f, 0.f, 0.f, 0.f };
-		context->OMSetRenderTargets(1U, &render_target, nullptr);
-		context->ClearRenderTargetView(render_target, color);
-
-		ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
-		swap_chain->Present(1U, 0U);
-	}
-
-	ImGui_ImplDX11_Shutdown();
-	ImGui_ImplWin32_Shutdown();
-
-	ImGui::DestroyContext();
-
-	if (swap_chain)
-	{
-		swap_chain->Release();
-	}
-	
-	if (context)
-	{
-		context->Release();
-	}
-
-	if (device)
-	{
-		device->Release();
-	}
-
-	if (render_target)
-	{
-		render_target->Release();
-	}
-
-	DestroyWindow(window);
-	UnregisterClass(wc.lpszClassName, wc.hInstance);
-	
-	return 0;
+// Windows application entry point
+int WINAPI wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance, _In_ LPWSTR lpCmdLine, _In_ int nCmdShow) {
+    // Suppress unused parameter warnings
+    UNREFERENCED_PARAMETER(hInstance);
+    UNREFERENCED_PARAMETER(hPrevInstance);
+    UNREFERENCED_PARAMETER(lpCmdLine);
+    UNREFERENCED_PARAMETER(nCmdShow);
+    
+    // Create debug console first
+    CreateDebugConsole();
+    
+    std::cout << "========================================" << std::endl;
+    std::cout << "   CS2 External Cheat Framework" << std::endl;
+    std::cout << "     Windows App + NT API" << std::endl;
+    std::cout << "========================================" << std::endl;
+    std::cout << "[Framework] Starting up..." << std::endl;
+    std::cout << "[Debug] This is a Windows application with debug console" << std::endl;
+    std::cout << "[Debug] Press INSERT to toggle console visibility" << std::endl;
+    
+    try {
+        // Create framework instance
+        g_framework = std::make_unique<CheatFramework>("cs2.exe");
+        
+        // Initialize the framework
+        if (!g_framework->Initialize()) {
+            std::cerr << "[Framework] Failed to initialize framework!" << std::endl;
+            std::cout << "\nMake sure:" << std::endl;
+            std::cout << "1. CS2 is running" << std::endl;
+            std::cout << "2. You're running as administrator" << std::endl;
+            std::cout << "3. Anti-virus isn't blocking the application" << std::endl;
+            
+            MessageBoxW(NULL, L"Failed to initialize framework! Check console for details.", L"Error", MB_OK | MB_ICONERROR);
+            DestroyDebugConsole();
+            return -1;
+        }
+        
+        // Run the main loop
+        g_framework->Run();
+        
+    } catch (const std::exception& e) {
+        std::cerr << "[Framework] Exception: " << e.what() << std::endl;
+        
+        // Convert exception message to wide string for MessageBox
+        std::string error_msg = "Exception: " + std::string(e.what());
+        int size_needed = MultiByteToWideChar(CP_UTF8, 0, error_msg.c_str(), -1, nullptr, 0);
+        std::wstring wide_error_msg(size_needed, 0);
+        MultiByteToWideChar(CP_UTF8, 0, error_msg.c_str(), -1, &wide_error_msg[0], size_needed);
+        
+        MessageBoxW(NULL, wide_error_msg.c_str(), L"Error", MB_OK | MB_ICONERROR);
+        DestroyDebugConsole();
+        return -1;
+    }
+    
+    std::cout << "[Framework] Goodbye!" << std::endl;
+    
+    #ifdef _DEBUG
+    std::cout << "[Debug] Press Enter to exit...";
+    std::cin.get();
+    #endif
+    
+    // Cleanup
+    DestroyDebugConsole();
+    return 0;
 }
-
